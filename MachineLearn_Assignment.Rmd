@@ -1,0 +1,125 @@
+---
+title: "MachineLearningAssignment"
+author: "Ravi Keron"
+date: "Sunday, January 31, 2016"
+output: html_document
+---
+# Introduction
+
+#### Background
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. 
+
+#### Data
+The training data for this work is available at 
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The testing data for this work is available at 
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+#### Goal
+The goal of your project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. A report is to be created describing how the model is built, how cross validation is used, what  the expected out of sample error is, and why the choices were made so. 
+
+## Loading the data into training and testing
+
+```{r}
+library(caret)
+library(kernlab)
+set.seed(32323)
+setwd("E:/DataScience/Practical Machine Learning/assignment")
+training <- read.csv("pml-training.csv", na.strings=c("NA", "#DIV/0!", ""))
+testing<-read.csv("pml-testing.csv",  na.strings=c("NA", "#DIV/0!", ""))
+
+
+```
+
+## Data Observation and cleanup
+```{r, echo=TRUE}
+str(training, list.len = 10)
+
+```
+
+Looks like the data has plenty of NAs.Also to decide the predictors, a check and removal of Near Zero variance elements has to be done.A basic cleanup has to be done.
+  
+### Remove columns that are mostly have NA's
+The first 6 columns does not seem to contribute in the prediction as they are just timestamps and names. These can be removed alongwith mostly NA columns
+```{r}
+training <- training[c(-1, -2, -3, -4, -5, -6)]
+testing<-testing[c(-1, -2, -3, -4, -5, -6)]
+NA_data <- apply(!is.na(training), 2, sum) > 19621
+training<-training[, NA_data]
+testing <- testing[, NA_data]
+
+```
+### Check for near zero vars
+```{r}
+nzvtrain <- nearZeroVar(training, saveMetrics=TRUE)
+training <- training[, nzvtrain$nzv==FALSE]
+
+nzvtest <- nearZeroVar(testing, saveMetrics=TRUE)
+testing <- testing[, nzvtest$nzv==FALSE]
+```
+Now the next step is to build the model. Break the training set into two parts 60% for training and 40% for testing
+
+```{r, echo=FALSE}
+inTrain<-createDataPartition(y=training$classe, p=0.6, list=FALSE)
+trainingset1 <- training[inTrain,]
+dim(trainingset1); dim(testingset1)
+
+```
+
+## Prediction Model
+Let us apply the Random Forest model to see what accuracy that the model provide. Based on the output other models can be tried if the accuracy is not beyond 90% We use the trainingset1 to train the model and do the fit model with testingset1
+
+### Fitting the model with Random Forest
+
+```{r}
+set.seed(12345)
+library(doParallel)
+registerDoParallel(cores=2)
+modelfit1 <- train(classe ~., data=trainingset1, method = "rf")
+modelfit1
+```
+
+Check the model accuracy using training set and then the testing set created from the training set
+
+```{r}
+predictTrain <- predict(modelfit1, trainingset1)
+modelfit1$finalModel
+confusionMatrix(predictTrain, trainingset1$classe)
+
+predtest <- predict(modelfit1, testingset1)
+confusionMatrix(predtest, testingset1$classe)
+
+```
+Looking at the testing part of the training set the accuracy of the model is at 99% which is very good and with a very small out of sample error and with a CI between 99.5% and 99.77% 
+
+
+### check the important predictors
+```{r}
+varImp(modelfit1)
+modelfit1$finalModel
+```
+
+## Apply the prediction model on the testing set
+The model is applied on the test data 
+```{r}
+apply_predtest <- predict(modelfit1, testing)
+apply_predtest
+```
+ 
+Finally produce the files for submission
+
+```{r}
+pml_write_files=function(x){
+n=length(x)
+for(i in 1:n){
+filename=paste0("problem_id_",i,".txt")
+write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+}
+}
+pml_write_files(apply_predtest)
+
+```
+
+20 test cases were predicted using the model and it went 100% accurate
+
